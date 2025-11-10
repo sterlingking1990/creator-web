@@ -16,6 +16,8 @@ const Survey = ({ user }) => {
   const [alreadyCompleted, setAlreadyCompleted] = useState(false);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [error, setError] = useState(null);
+  const [skippedQuestions, setSkippedQuestions] = useState(new Set());
+  const [questionFlow, setQuestionFlow] = useState([0]); // Track the actual flow path
 
   useEffect(() => {
     if (user && surveyId) {
@@ -111,6 +113,23 @@ const Survey = ({ user }) => {
       const currentQuestion = questions[currentQuestionIndex];
       const nextQuestionIndex = questions.findIndex(q => q.id === option.next_question_id);
       if (nextQuestionIndex !== -1) {
+        // Mark questions between current and next as skipped
+        const questionsToSkip = new Set();
+        for (let i = currentQuestionIndex + 1; i < nextQuestionIndex; i++) {
+          questionsToSkip.add(i);
+        }
+        
+        // Update skipped questions
+        setSkippedQuestions(prev => {
+          const newSkipped = new Set(prev);
+          questionsToSkip.forEach(idx => newSkipped.add(idx));
+          return newSkipped;
+        });
+
+        // Update question flow to track the path
+        setQuestionFlow(prev => [...prev, nextQuestionIndex]);
+        
+        // Jump to the target question
         setCurrentQuestionIndex(nextQuestionIndex);
       }
     }
@@ -207,18 +226,38 @@ const Survey = ({ user }) => {
 
   const nextQuestion = () => {
     if (currentQuestionIndex < questions.length - 1) {
-      setCurrentQuestionIndex(currentQuestionIndex + 1);
+      let nextIndex = currentQuestionIndex + 1;
+      // Skip over any skipped questions when using next button
+      while (nextIndex < questions.length && skippedQuestions.has(nextIndex)) {
+        nextIndex++;
+      }
+      if (nextIndex < questions.length) {
+        setQuestionFlow(prev => [...prev, nextIndex]);
+        setCurrentQuestionIndex(nextIndex);
+      }
     }
   };
 
   const prevQuestion = () => {
-    if (currentQuestionIndex > 0) {
-      setCurrentQuestionIndex(currentQuestionIndex - 1);
+    if (questionFlow.length > 1) {
+      // Go back to the previous question in the actual flow path
+      const newFlow = [...questionFlow];
+      newFlow.pop(); // Remove current question
+      const prevIndex = newFlow[newFlow.length - 1];
+      setQuestionFlow(newFlow);
+      setCurrentQuestionIndex(prevIndex);
     }
   };
 
   const goToQuestion = (index) => {
-    setCurrentQuestionIndex(index);
+    // Only allow navigation to non-skipped questions or questions already answered
+    if (!skippedQuestions.has(index) || answers[questions[index]?.id]) {
+      setCurrentQuestionIndex(index);
+      // Update flow path to include this question if not already there
+      if (!questionFlow.includes(index)) {
+        setQuestionFlow(prev => [...prev, index]);
+      }
+    }
   };
 
   const renderQuestion = (question) => {
@@ -394,15 +433,24 @@ const Survey = ({ user }) => {
 
           {/* Question Navigation */}
           <div className="question-nav">
-            {questions.map((_, index) => (
-              <button
-                key={index}
-                className={`question-nav-btn ${index === currentQuestionIndex ? 'active' : ''} ${answers[questions[index]?.id] ? 'answered' : ''}`}
-                onClick={() => goToQuestion(index)}
-              >
-                {index + 1}
-              </button>
-            ))}
+            {questions.map((_, index) => {
+              const isSkipped = skippedQuestions.has(index);
+              const isAnswered = answers[questions[index]?.id];
+              const isActive = index === currentQuestionIndex;
+              const isAccessible = !isSkipped || isAnswered;
+              
+              return (
+                <button
+                  key={index}
+                  className={`question-nav-btn ${isActive ? 'active' : ''} ${isAnswered ? 'answered' : ''} ${isSkipped && !isAnswered ? 'skipped' : ''}`}
+                  onClick={() => goToQuestion(index)}
+                  disabled={!isAccessible}
+                  title={isSkipped && !isAnswered ? 'Question skipped based on previous answer' : ''}
+                >
+                  {index + 1}
+                </button>
+              );
+            })}
           </div>
 
           {/* Current Question */}
@@ -416,7 +464,7 @@ const Survey = ({ user }) => {
           <div className="survey-navigation">
             <button 
               onClick={prevQuestion}
-              disabled={currentQuestionIndex === 0}
+              disabled={questionFlow.length <= 1}
               className="btn btn-secondary"
             >
               Previous

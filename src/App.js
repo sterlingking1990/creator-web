@@ -10,6 +10,7 @@ import Invitations from './pages/Invitations';
 import Wallet from './pages/Wallet';
 import Profile from './pages/Profile';
 import Survey from './pages/Survey';
+import ChallengeParticipate from './pages/ChallengeParticipate';
 import './App.css';
 
 function App() {
@@ -101,6 +102,7 @@ function App() {
           <Route path="/wallet" element={<Wallet user={user} />} />
           <Route path="/profile" element={<Profile user={user} setUser={setUser} />} />
           <Route path="/survey/:surveyId" element={<Survey user={user} />} />
+          <Route path="/challenge/:challengeId" element={<ChallengeParticipate user={user} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>

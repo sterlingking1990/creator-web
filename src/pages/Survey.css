@@ -138,6 +138,24 @@
   color: white;
 }
 
+.question-nav-btn.skipped {
+  border-color: #d1d5db;
+  background: #f3f4f6;
+  color: #9ca3af;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.question-nav-btn.skipped:hover {
+  border-color: #d1d5db;
+  background: #f3f4f6;
+}
+
+.question-nav-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .question-area {
   padding: 32px 24px;
   min-height: 400px;

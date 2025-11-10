@@ -58,9 +58,9 @@ const Campaigns = ({ user }) => {
 
   const handleCampaignClick = (campaign) => {
     if (campaign.type === 'challenge' && campaign.challenges.length > 0) {
-      // TODO: Navigate to challenge participation
-      console.log('Navigate to challenge:', campaign.challenges[0]);
-      alert('Challenge participation feature coming soon!');
+      // Navigate to challenge participation
+      const challengeId = campaign.challenges[0].id;
+      window.location.href = `/challenge/${challengeId}`;
     } else if (campaign.type === 'survey' && campaign.surveys.length > 0) {
       // Navigate to survey
       const surveyId = campaign.surveys[0].id;

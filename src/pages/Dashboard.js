@@ -392,11 +392,9 @@ const Dashboard = ({ user }) => {
       return;
     }
 
-    // For now, we'll show an alert. This could be enhanced with a proper challenge modal
-    alert(`Challenge: ${status.title}\n\nThis would open the challenge participation interface.`);
-    
-    // TODO: Navigate to challenge component or show challenge modal  
-    // Example: window.location.href = `/challenge/${status.challenges[0].id}`;
+    // Navigate to challenge participation
+    const challengeId = status.challenges[0].id;
+    window.location.href = `/challenge/${challengeId}`;
   };
 
   if (loading) {
