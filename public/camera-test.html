@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Camera Test</title>
+    <style>
+        video {
+            width: 100%;
+            max-width: 640px;
+            height: auto;
+            border: 2px solid #333;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 10px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        .status {
+            margin: 20px 0;
+            padding: 10px;
+            background: #f0f0f0;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Camera Test Page</h1>
+        <div class="status" id="status">Click "Start Camera" to test camera access</div>
+        
+        <button onclick="startCamera()">Start Camera</button>
+        <button onclick="stopCamera()">Stop Camera</button>
+        
+        <video id="videoElement" autoplay muted playsinline></video>
+        
+        <div id="info"></div>
+    </div>
+
+    <script>
+        let currentStream = null;
+        const video = document.getElementById('videoElement');
+        const status = document.getElementById('status');
+        const info = document.getElementById('info');
+
+        function updateStatus(message) {
+            status.textContent = message;
+            console.log(message);
+        }
+
+        function updateInfo(infoText) {
+            info.innerHTML = infoText;
+        }
+
+        async function startCamera() {
+            try {
+                updateStatus('Requesting camera access...');
+                
+                // Check browser support
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error('getUserMedia not supported by this browser');
+                }
+
+                // List available devices
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoDevices = devices.filter(device => device.kind === 'videoinput');
+                updateInfo(`Found ${videoDevices.length} video devices: ${videoDevices.map(d => d.label || 'Unknown Camera').join(', ')}`);
+
+                // Try different constraint sets
+                const constraintSets = [
+                    { video: { facingMode: 'user' }, audio: true },
+                    { video: true, audio: true },
+                    { video: true, audio: false },
+                    { video: { width: 640, height: 480 }, audio: false }
+                ];
+
+                let stream = null;
+                for (let i = 0; i < constraintSets.length; i++) {
+                    try {
+                        updateStatus(`Trying constraint set ${i + 1}...`);
+                        console.log('Constraints:', constraintSets[i]);
+                        stream = await navigator.mediaDevices.getUserMedia(constraintSets[i]);
+                        updateStatus(`Success with constraint set ${i + 1}!`);
+                        break;
+                    } catch (error) {
+                        console.log(`Constraint set ${i + 1} failed:`, error);
+                    }
+                }
+
+                if (!stream) {
+                    throw new Error('All constraint sets failed');
+                }
+
+                currentStream = stream;
+                video.srcObject = stream;
+
+                // Wait for video to load
+                video.onloadedmetadata = () => {
+                    updateStatus('Video loaded successfully!');
+                    video.play().catch(playError => {
+                        updateStatus('Video loaded but play failed: ' + playError.message);
+                    });
+                };
+
+                // Get stream info
+                const videoTracks = stream.getVideoTracks();
+                const audioTracks = stream.getAudioTracks();
+                
+                let streamInfo = `<strong>Stream Info:</strong><br>`;
+                streamInfo += `Video tracks: ${videoTracks.length}<br>`;
+                streamInfo += `Audio tracks: ${audioTracks.length}<br>`;
+                
+                if (videoTracks.length > 0) {
+                    const settings = videoTracks[0].getSettings();
+                    streamInfo += `Video: ${settings.width}x${settings.height}, ${settings.frameRate}fps<br>`;
+                    streamInfo += `Device: ${videoTracks[0].label}<br>`;
+                }
+
+                updateInfo(streamInfo);
+
+            } catch (error) {
+                updateStatus('Camera failed: ' + error.message);
+                console.error('Camera error:', error);
+                
+                let errorInfo = `<strong>Error Details:</strong><br>`;
+                errorInfo += `Name: ${error.name}<br>`;
+                errorInfo += `Message: ${error.message}<br>`;
+                
+                if (error.name === 'NotAllowedError') {
+                    errorInfo += `<strong>Solution:</strong> Camera permission denied. Please:<br>`;
+                    errorInfo += `1. Click the camera icon in your browser's address bar<br>`;
+                    errorInfo += `2. Allow camera access<br>`;
+                    errorInfo += `3. Refresh the page`;
+                } else if (error.name === 'NotFoundError') {
+                    errorInfo += `<strong>Solution:</strong> No camera found. Check if:<br>`;
+                    errorInfo += `1. Camera is connected<br>`;
+                    errorInfo += `2. Camera drivers are installed<br>`;
+                    errorInfo += `3. Camera is not being used by another app`;
+                }
+                
+                updateInfo(errorInfo);
+            }
+        }
+
+        function stopCamera() {
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+                currentStream = null;
+                video.srcObject = null;
+                updateStatus('Camera stopped');
+                updateInfo('');
+            }
+        }
+
+        // Auto-test on load
+        window.onload = () => {
+            updateStatus('Page loaded. Browser: ' + navigator.userAgent);
+        };
+    </script>
+</body>
+</html>

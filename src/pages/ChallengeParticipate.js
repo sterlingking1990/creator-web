@@ -18,9 +18,12 @@ const ChallengeParticipate = ({ user }) => {
   const [error, setError] = useState(null);
   const [dragActive, setDragActive] = useState(false);
   const [cameraMode, setCameraMode] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
+  const [isRecording, setIsRecording] = useState(false); // false, true, or 'processing'
   const [recordedBlob, setRecordedBlob] = useState(null);
   const [cameraStream, setCameraStream] = useState(null);
+  
+  // *** NEW STATE ***
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   
   const fileInputRef = useRef(null);
   const videoRef = useRef(null);
@@ -105,6 +108,10 @@ const ChallengeParticipate = ({ user }) => {
 
     setSelectedMedia(file);
     
+    // *** MODIFIED ***
+    // Set preview loading to true
+    setIsPreviewLoading(true);
+    
     // Create preview URL
     const previewUrl = URL.createObjectURL(file);
     setMediaPreview(previewUrl);
@@ -173,11 +180,24 @@ const ChallengeParticipate = ({ user }) => {
 
     setUploading(true);
     try {
+      console.log('Starting submission with media:', {
+        name: selectedMedia.name,
+        size: selectedMedia.size,
+        type: selectedMedia.type
+      });
+
+      // For recorded videos, we need to upload the blob, not the file
+      let uploadFile = selectedMedia;
+      if (recordedBlob) {
+        console.log('Using recorded blob for upload');
+        uploadFile = recordedBlob;
+      }
+
       // Upload media to storage
-      const mediaUrl = await uploadMediaToStorage(selectedMedia);
+      const mediaUrl = await uploadMediaToStorage(uploadFile);
 
       // Determine submission type
-      const submissionType = selectedMedia.type.startsWith('video/') ? 'video' : 'image';
+const submissionType = selectedMedia.type.startsWith('video/') ? 'video' : 'image';
 
       // Process hashtags
       const hashtagArray = hashtags
@@ -229,6 +249,11 @@ const ChallengeParticipate = ({ user }) => {
     setSelectedMedia(null);
     setMediaPreview(null);
     setRecordedBlob(null);
+    
+    // *** MODIFIED ***
+    // Reset preview loading state
+    setIsPreviewLoading(false);
+
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -264,6 +289,7 @@ const ChallengeParticipate = ({ user }) => {
       setCameraStream(null);
     }
     setCameraMode(false);
+    setIsRecording(false);
   };
 
   const switchCamera = async () => {
@@ -301,8 +327,24 @@ const ChallengeParticipate = ({ user }) => {
   const startRecording = () => {
     if (!cameraStream) return;
 
+    // Define MIME type at the start of the function
+    let mimeType = 'video/webm';
+    
+    // Check for supported MIME types
+    if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) {
+      mimeType = 'video/webm;codecs=vp9';
+    } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8')) {
+      mimeType = 'video/webm;codecs=vp8';
+    } else if (MediaRecorder.isTypeSupported('video/webm')) {
+      mimeType = 'video/webm';
+    } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+      mimeType = 'video/mp4';
+    }
+
+    console.log('Using MIME type for recording:', mimeType);
+
     const mediaRecorder = new MediaRecorder(cameraStream, {
-      mimeType: 'video/webm;codecs=vp9'
+      mimeType: mimeType
     });
     
     const chunks = [];
@@ -313,23 +355,101 @@ const ChallengeParticipate = ({ user }) => {
       }
     };
     
-    mediaRecorder.onstop = () => {
-      const recordedBlob = new Blob(chunks, { type: 'video/webm' });
+    mediaRecorder.onstop = async () => {
+      console.log('MediaRecorder stopped, processing chunks:', chunks.length);
+      setIsRecording('processing');
+      
+      if (chunks.length === 0) {
+        console.error('No chunks recorded');
+        alert('Recording failed - no data captured');
+        setIsRecording(false);
+        return;
+      }
+
+      // Use the same MIME type that was used for recording
+      const recordedBlob = new Blob(chunks, { type: mimeType });
+      console.log('Created blob:', {
+        size: recordedBlob.size,
+        type: recordedBlob.type
+      });
+
+      if (recordedBlob.size === 0) {
+        console.error('Empty recording blob');
+        alert('Recording failed - empty file');
+        setIsRecording(false);
+        return;
+      }
+
       setRecordedBlob(recordedBlob);
       
       // Create a File object from the blob
-      const recordedFile = new File([recordedBlob], `recorded_video_${Date.now()}.webm`, {
-        type: 'video/webm'
+      const extension = mimeType.includes('mp4') ? 'mp4' : 'webm';
+      const recordedFile = new File([recordedBlob], `recorded_video_${Date.now()}.${extension}`, {
+        type: mimeType
+      });
+      
+      console.log('Created file:', {
+        name: recordedFile.name,
+        size: recordedFile.size,
+        type: recordedFile.type
       });
       
       setSelectedMedia(recordedFile);
       
       // Create preview URL
       const previewUrl = URL.createObjectURL(recordedBlob);
-      setMediaPreview(previewUrl);
+      console.log('Preview URL created:', previewUrl);
+      
+      // Test the blob URL by creating a temporary video element
+      const testVideo = document.createElement('video');
+      testVideo.src = previewUrl;
+      
+      // Set up promise to handle video loading
+      const videoLoadPromise = new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Video load timeout'));
+        }, 5000); // 5 second timeout
+
+        testVideo.onloadeddata = () => {
+          console.log('Test video loaded successfully');
+          clearTimeout(timeout);
+          resolve();
+        };
+
+        testVideo.onerror = (e) => {
+          console.error('Test video failed to load:', e);
+          clearTimeout(timeout);
+          reject(e);
+        };
+      });
+
+      try {
+        // Wait for video to be ready
+        await videoLoadPromise;
+        
+        // Set preview loading and show the video
+        setIsPreviewLoading(true);
+        setMediaPreview(previewUrl);
+        
+        // Small delay then stop loading
+        setTimeout(() => {
+          setIsPreviewLoading(false);
+        }, 100);
+
+      } catch (error) {
+        console.error('Video validation failed:', error);
+        alert('Recording completed but preview failed. The video may still be uploadable.');
+        setIsPreviewLoading(false);
+        setMediaPreview(previewUrl); // Try anyway
+      }
       
       // Stop camera and exit camera mode
-      stopCamera();
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        setCameraStream(null);
+      }
+      setCameraMode(false);
+      setIsRecording(false);
     };
     
     mediaRecorderRef.current = mediaRecorder;
@@ -339,18 +459,32 @@ const ChallengeParticipate = ({ user }) => {
     // Auto-stop recording after max duration
     const maxDuration = (challenge?.max_duration || 30) * 1000;
     setTimeout(() => {
-      if (mediaRecorderRef.current && isRecording) {
+      if (mediaRecorderRef.current && isRecording === true) {
         stopRecording();
       }
     }, maxDuration);
   };
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
+    if (mediaRecorderRef.current && isRecording === true) {
       mediaRecorderRef.current.stop();
-      setIsRecording(false);
+      // Don't stop camera here - let the onstop handler handle it
     }
   };
+
+ 
+// This effect loads the video's first frame AND ensures it's playable
+  useEffect(() => {
+    if (mediaPreview && videoRef.current && selectedMedia && selectedMedia.type.startsWith('video/')) {
+      
+      // *** ADD THIS LINE ***
+      // Manually assign the src property to the DOM element
+      videoRef.current.src = mediaPreview;
+      
+      // Then call load()
+      videoRef.current.load();
+    }
+  }, [mediaPreview, selectedMedia]);
 
   // Cleanup camera stream on unmount
   useEffect(() => {
@@ -358,8 +492,11 @@ const ChallengeParticipate = ({ user }) => {
       if (cameraStream) {
         cameraStream.getTracks().forEach(track => track.stop());
       }
+      if (mediaPreview) {
+        URL.revokeObjectURL(mediaPreview);
+      }
     };
-  }, [cameraStream]);
+  }, [cameraStream, mediaPreview]);
 
   if (loading) {
     return (
@@ -517,12 +654,18 @@ const ChallengeParticipate = ({ user }) => {
                     
                     <div className="camera-controls">
                       <div className="recording-timer">
-                        {isRecording ? `Recording... (${challenge?.max_duration || 30}s max)` : 'Ready to record'}
+                        {isRecording === 'processing' 
+                          ? 'Processing video...' 
+                          : isRecording 
+                            ? `Recording... (${challenge?.max_duration || 30}s max)` 
+                            : 'Ready to record'
+                        }
                       </div>
                       
                       <button
                         className={`record-btn ${isRecording ? 'recording' : ''}`}
                         onClick={isRecording ? stopRecording : startRecording}
+                        disabled={isRecording === 'processing'}
                         type="button"
                       >
                         <div className={`record-indicator ${isRecording ? 'recording' : ''}`}></div>
@@ -532,20 +675,57 @@ const ChallengeParticipate = ({ user }) => {
                 </div>
               </div>
             ) : (
+              // *** MODIFIED JSX FOR PREVIEW ***
               <div className="media-preview">
                 <div className="preview-container">
-                  {selectedMedia.type.startsWith('video/') ? (
+                  {/* Show loader WHILE preview is loading */}
+                  {isPreviewLoading && (
+                    <div className="loading-container" style={{ minHeight: '200px', width: '100%' }}>
+                      <div className="loading-spinner"></div>
+                      <p>Loading preview...</p>
+                    </div>
+                  )}
+
+                  {selectedMedia.type.startsWith('video/') || selectedMedia.name?.includes('.webm') || selectedMedia.name?.includes('.mp4') ? (
                     <video
                       ref={videoRef}
                       src={mediaPreview}
                       controls
                       className="preview-media"
+                      preload="metadata"
+                      muted
+                      onLoadedData={() => {
+                        console.log('Video preview loaded successfully');
+                        setIsPreviewLoading(false);
+                      }}
+                      onError={(e) => {
+                        console.error('Video preview error:', e);
+                        setIsPreviewLoading(false);
+                        alert('Video preview failed to load, but the recording may still be valid for upload.');
+                      }}
+                      onCanPlay={() => {
+                        console.log('Video can start playing');
+                      }}
+                      style={{ 
+                        visibility: isPreviewLoading ? 'hidden' : 'visible',
+                        maxWidth: '100%',
+                        height: 'auto'
+                      }}
                     />
                   ) : (
                     <img
                       src={mediaPreview}
                       alt="Preview"
                       className="preview-media"
+                      onLoad={() => {
+                        console.log('Image preview loaded successfully');
+                        setIsPreviewLoading(false);
+                      }}
+                      onError={(e) => {
+                        console.error('Image preview error:', e);
+                        setIsPreviewLoading(false);
+                      }}
+                      style={{ visibility: isPreviewLoading ? 'hidden' : 'visible' }}
                     />
                   )}
                   <button 
@@ -555,11 +735,15 @@ const ChallengeParticipate = ({ user }) => {
                     ✕
                   </button>
                 </div>
-                <div className="media-info">
-                  <p><strong>File:</strong> {selectedMedia.name}</p>
-                  <p><strong>Size:</strong> {(selectedMedia.size / 1024 / 1024).toFixed(2)} MB</p>
-                  <p><strong>Type:</strong> {selectedMedia.type}</p>
-                </div>
+                
+                {/* Only show media info AFTER preview is loaded */}
+                {!isPreviewLoading && (
+                  <div className="media-info">
+                    <p><strong>File:</strong> {selectedMedia.name}</p>
+                    <p><strong>Size:</strong> {(selectedMedia.size / 1024 / 1024).toFixed(2)} MB</p>
+                    <p><strong>Type:</strong> {selectedMedia.type}</p>
+                  </div>
+                )}
               </div>
             )}
           </div>
