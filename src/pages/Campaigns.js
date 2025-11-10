@@ -60,9 +60,11 @@ const Campaigns = ({ user }) => {
     if (campaign.type === 'challenge' && campaign.challenges.length > 0) {
       // TODO: Navigate to challenge participation
       console.log('Navigate to challenge:', campaign.challenges[0]);
+      alert('Challenge participation feature coming soon!');
     } else if (campaign.type === 'survey' && campaign.surveys.length > 0) {
-      // TODO: Navigate to survey
-      console.log('Navigate to survey:', campaign.surveys[0]);
+      // Navigate to survey
+      const surveyId = campaign.surveys[0].id;
+      window.location.href = `/survey/${surveyId}`;
     } else {
       alert('Cannot open this campaign.');
     }

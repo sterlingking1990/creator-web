@@ -381,11 +381,9 @@ const Dashboard = ({ user }) => {
       return;
     }
 
-    // For now, we'll show an alert. This could be enhanced with a proper survey modal
-    alert(`Survey: ${status.title}\n\nThis would open the survey interface. Survey functionality can be added as a separate component.`);
-    
-    // TODO: Navigate to survey component or show survey modal
-    // Example: window.location.href = `/survey/${status.surveys[0].id}`;
+    // Navigate to survey
+    const surveyId = status.surveys[0].id;
+    window.location.href = `/survey/${surveyId}`;
   };
 
   const handleChallenge = (status) => {

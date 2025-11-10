@@ -9,6 +9,7 @@ import Campaigns from './pages/Campaigns';
 import Invitations from './pages/Invitations';
 import Wallet from './pages/Wallet';
 import Profile from './pages/Profile';
+import Survey from './pages/Survey';
 import './App.css';
 
 function App() {
@@ -99,6 +100,7 @@ function App() {
           <Route path="/invitations" element={<Invitations user={user} />} />
           <Route path="/wallet" element={<Wallet user={user} />} />
           <Route path="/profile" element={<Profile user={user} setUser={setUser} />} />
+          <Route path="/survey/:surveyId" element={<Survey user={user} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>
